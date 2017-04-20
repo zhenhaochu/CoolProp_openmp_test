@@ -10,32 +10,35 @@
 using namespace CoolProp;
 void do_one(int N){
     
-    // This many threads are in the pool
-    int Nthread = 8;
-
     std::vector<double> rho(N,0);
     std::cout << "N:" << N << std::endl;
     
     // One instance of an AbstractState instance for each thread
     std::vector<std::shared_ptr<AbstractState> > ASvec;
-    for(int i = 0; i < N; ++i){ ASvec.push_back(std::shared_ptr<AbstractState>(AbstractState::factory("HEOS","CO2"))); }
+    // Note that the number of instances here must be larger than the number of threads you plan to
+    // use or you will get a segfault because you are accessing outside the range of valid
+    // indices. Make it conservatively large
+    for(int i = 0; i < 20; ++i){ 
+        ASvec.push_back(std::shared_ptr<AbstractState>(AbstractState::factory("HEOS","CO2"))); 
+    }
     
     {   
         auto startTime = std::chrono::system_clock::now();
         #pragma omp parallel for
         for(int i = 0; i < N; i++){
-
-            // int j = i%omp_get_num_threads(); // You could also try to use a smaller set of AbstractState instances, but that requires synchronization to ensure two threads don't write to the same abstractstate, or other intelligent means
-            std::shared_ptr<AbstractState> &AS = ASvec[i];
+            std::size_t tid = omp_get_thread_num();
+            std::shared_ptr<AbstractState> &AS = ASvec[tid];
             AS->update(PT_INPUTS, 101325+i, 300);
             rho[i] = AS->rhomolar();
+
+            // Uncomment this block to see what thread id you have
+            // --
             // #pragma omp critical
-            // std::cout << j << " " << rho[i] << std::endl;
+            // std::cout << "tid: " << omp_get_thread_num() << std::endl;
         }
         auto endTime = std::chrono::system_clock::now();
         std::cout << "With OpenMP: " << std::chrono::duration<double>(endTime - startTime).count() << std::endl;
     }
-    
     {
         auto startTime = std::chrono::system_clock::now();
         for(int i = 0; i < N; i++){
@@ -50,9 +53,10 @@ void do_one(int N){
 }
 int main(int argc, char *argv[])
 {
-    do_one(4);
+    do_one(10);
     do_one(100);
     do_one(1000);
     do_one(10000);
     do_one(100000);
+    do_one(1000000);
 }
